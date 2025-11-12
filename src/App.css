@@ -1,0 +1,8 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: radial-gradient(circle at top, rgba(59, 130, 246, 0.2), transparent 55%);
+}

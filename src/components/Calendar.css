@@ -85,6 +85,8 @@
     color 0.2s ease;
   position: relative;
   outline: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .calendar__cell--current {
@@ -216,6 +218,8 @@
   font-size: 0.9rem;
   font-family: inherit;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .calendar__event-inputs input::placeholder {
@@ -307,6 +311,8 @@
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .calendar__event-item::before {

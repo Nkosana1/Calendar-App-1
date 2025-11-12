@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./Calendar.css";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -84,6 +84,8 @@ export function Calendar() {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [events, setEvents] = useState({});
   const [eventTitle, setEventTitle] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitTimeoutRef = useRef(null);
   const today = useMemo(() => new Date(), []);
 
   const calendarMatrix = useMemo(
@@ -109,22 +111,55 @@ export function Calendar() {
   const selectedEvents =
     (selectedDateKey && events[selectedDateKey]) ? events[selectedDateKey] : [];
 
+  useEffect(() => {
+    return () => {
+      if (submitTimeoutRef.current) {
+        clearTimeout(submitTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleMonthNavigate = (offset) => {
+    setActiveDate((prev) => {
+      const next = addMonths(prev, offset);
+      setSelectedDate((currentSelected) => {
+        if (!currentSelected) {
+          return new Date(next.getFullYear(), next.getMonth(), 1);
+        }
+        const targetDay = Math.min(
+          currentSelected.getDate(),
+          getDaysInMonth(next.getFullYear(), next.getMonth()),
+        );
+        return new Date(next.getFullYear(), next.getMonth(), targetDay);
+      });
+      return next;
+    });
+  };
+
   const handleAddEvent = (event) => {
     event.preventDefault();
-    if (!eventTitle.trim() || !selectedDate) return;
+    if (!eventTitle.trim() || !selectedDate || isSubmitting) return;
     const key = getDateKey(selectedDate);
-    setEvents((prev) => {
-      const nextEvents = prev[key] ? [...prev[key]] : [];
-      nextEvents.push({
-        id: `${key}-${Date.now()}`,
-        title: eventTitle.trim(),
+    if (submitTimeoutRef.current) {
+      clearTimeout(submitTimeoutRef.current);
+    }
+    setIsSubmitting(true);
+    submitTimeoutRef.current = setTimeout(() => {
+      setEvents((prev) => {
+        const nextEvents = prev[key] ? [...prev[key]] : [];
+        nextEvents.push({
+          id: `${key}-${Date.now()}`,
+          title: eventTitle.trim(),
+        });
+        return {
+          ...prev,
+          [key]: nextEvents,
+        };
       });
-      return {
-        ...prev,
-        [key]: nextEvents,
-      };
-    });
-    setEventTitle("");
+      setEventTitle("");
+      setIsSubmitting(false);
+      submitTimeoutRef.current = null;
+    }, 200);
   };
 
   return (
@@ -134,7 +169,7 @@ export function Calendar() {
           type="button"
           className="calendar__nav-button"
           aria-label="Previous month"
-          onClick={() => setActiveDate((prev) => addMonths(prev, -1))}
+          onClick={() => handleMonthNavigate(-1)}
         >
           ‹
         </button>
@@ -143,107 +178,155 @@ export function Calendar() {
           type="button"
           className="calendar__nav-button"
           aria-label="Next month"
-          onClick={() => setActiveDate((prev) => addMonths(prev, 1))}
+          onClick={() => handleMonthNavigate(1)}
         >
           ›
         </button>
       </header>
-      <div className="calendar__grid">
-        {WEEKDAYS.map((weekday) => (
-          <div key={weekday} className="calendar__weekday">
-            {weekday}
-          </div>
-        ))}
-        {calendarMatrix.flat().map((cell) => {
-          const isToday = cell.inCurrentMonth
-            ? isSameDate(cell.dateValue, today)
-            : false;
-          const isSelected = cell.inCurrentMonth
-            ? isSameDate(cell.dateValue, selectedDate)
-            : false;
-          const key =
-            cell.inCurrentMonth && cell.dateValue
-              ? getDateKey(cell.dateValue)
-              : null;
-          const cellEvents = key && events[key] ? events[key] : [];
-
-          return (
-            <div
-              key={cell.key}
-              role={cell.inCurrentMonth ? "button" : undefined}
-              tabIndex={cell.inCurrentMonth ? 0 : -1}
-              onClick={() => {
-                if (!cell.inCurrentMonth || !cell.dateValue) return;
-                setSelectedDate(cell.dateValue);
-              }}
-              onKeyDown={(evt) => {
-                if (
-                  cell.inCurrentMonth &&
-                  cell.dateValue &&
-                  (evt.key === "Enter" || evt.key === " ")
-                ) {
-                  evt.preventDefault();
-                  setSelectedDate(cell.dateValue);
-                }
-              }}
-              className={`calendar__cell${
-                cell.inCurrentMonth ? " calendar__cell--current" : ""
-              }${isToday ? " calendar__cell--today" : ""}${
-                isSelected ? " calendar__cell--selected" : ""
-              }${cellEvents.length ? " calendar__cell--has-events" : ""}`}
-              aria-pressed={cell.inCurrentMonth ? isSelected : undefined}
-            >
-              {cell.label}
-              {cellEvents.length > 0 && (
-                <span className="calendar__event-indicator">
-                  {cellEvents.length}
-                </span>
-              )}
+      <div className="calendar__content">
+        <div
+          className="calendar__grid"
+          role="grid"
+          aria-readonly="true"
+          aria-label="Calendar dates"
+        >
+          {WEEKDAYS.map((weekday) => (
+            <div key={weekday} className="calendar__weekday" role="columnheader">
+              {weekday}
             </div>
-          );
-        })}
-      </div>
-      <section className="calendar__details" aria-live="polite">
-        <h2 className="calendar__details-title">
-          {formattedSelectedDate || "Select a date"}
-        </h2>
-        {selectedDate ? (
-          <>
-            <form className="calendar__event-form" onSubmit={handleAddEvent}>
-              <label className="calendar__event-label" htmlFor="event-title">
-                Add Event
-              </label>
-              <div className="calendar__event-inputs">
-                <input
-                  id="event-title"
-                  type="text"
-                  value={eventTitle}
-                  placeholder="Event title"
-                  onChange={(evt) => setEventTitle(evt.target.value)}
-                />
-                <button type="submit" className="calendar__event-submit">
-                  Add
-                </button>
+          ))}
+          {calendarMatrix.flat().map((cell) => {
+            const isToday = cell.inCurrentMonth
+              ? isSameDate(cell.dateValue, today)
+              : false;
+            const isSelected = cell.inCurrentMonth
+              ? isSameDate(cell.dateValue, selectedDate)
+              : false;
+            const key =
+              cell.inCurrentMonth && cell.dateValue
+                ? getDateKey(cell.dateValue)
+                : null;
+            const cellEvents = key && events[key] ? events[key] : [];
+            const indicatorLabel =
+              cellEvents.length > 9 ? "9+" : String(cellEvents.length || "");
+            const ariaLabel =
+              cell.inCurrentMonth && cell.dateValue
+                ? `${cell.dateValue.toLocaleDateString(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}${
+                    cellEvents.length
+                      ? `. ${cellEvents.length} event${
+                          cellEvents.length > 1 ? "s" : ""
+                        }`
+                      : ""
+                  }`
+                : undefined;
+
+            return (
+              <div
+                key={cell.key}
+                role={cell.inCurrentMonth ? "gridcell" : "presentation"}
+                tabIndex={cell.inCurrentMonth ? 0 : -1}
+                onClick={() => {
+                  if (!cell.inCurrentMonth || !cell.dateValue) return;
+                  setSelectedDate(cell.dateValue);
+                }}
+                onKeyDown={(evt) => {
+                  if (
+                    cell.inCurrentMonth &&
+                    cell.dateValue &&
+                    (evt.key === "Enter" || evt.key === " ")
+                  ) {
+                    evt.preventDefault();
+                    setSelectedDate(cell.dateValue);
+                  }
+                }}
+                className={`calendar__cell${
+                  cell.inCurrentMonth ? " calendar__cell--current" : " calendar__cell--adjacent"
+                }${cell.inCurrentMonth ? " calendar__cell--interactive" : ""}${
+                  isToday ? " calendar__cell--today" : ""
+                }${isSelected ? " calendar__cell--selected" : ""}${
+                  cellEvents.length ? " calendar__cell--has-events" : ""
+                }`}
+                aria-selected={cell.inCurrentMonth ? isSelected : undefined}
+                aria-label={ariaLabel}
+              >
+                <span className="calendar__cell-label" aria-hidden="true">
+                  {cell.label}
+                </span>
+                {cellEvents.length > 0 && (
+                  <span className="calendar__event-indicator" aria-hidden="true">
+                    {indicatorLabel}
+                  </span>
+                )}
               </div>
-            </form>
-            <ul className="calendar__event-list">
-              {selectedEvents.length === 0 ? (
-                <li className="calendar__event-empty">No events yet.</li>
-              ) : (
-                selectedEvents.map((item) => (
-                  <li key={item.id} className="calendar__event-item">
-                    {item.title}
-                  </li>
-                ))
-              )}
-            </ul>
-          </>
-        ) : (
-          <p className="calendar__event-empty">
-            Choose a date to add events.
-          </p>
-        )}
-      </section>
+            );
+          })}
+        </div>
+        <section className="calendar__details" aria-live="polite">
+          <div className="calendar__details-heading">
+            <h2 className="calendar__details-title">
+              {formattedSelectedDate || "Select a date"}
+            </h2>
+            {selectedEvents.length > 0 && (
+              <span className="calendar__details-count">
+                {selectedEvents.length}{" "}
+                {selectedEvents.length === 1 ? "event" : "events"}
+              </span>
+            )}
+          </div>
+          {selectedDate ? (
+            <>
+              <form
+                className="calendar__event-form"
+                onSubmit={handleAddEvent}
+                aria-busy={isSubmitting}
+              >
+                <label className="calendar__event-label" htmlFor="event-title">
+                  Add Event
+                </label>
+                <div className="calendar__event-inputs">
+                  <input
+                    id="event-title"
+                    type="text"
+                    value={eventTitle}
+                    placeholder="e.g. Team stand-up at 9:30"
+                    onChange={(evt) => setEventTitle(evt.target.value)}
+                    disabled={isSubmitting}
+                  />
+                  <button
+                    type="submit"
+                    className={`calendar__event-submit${
+                      isSubmitting ? " calendar__event-submit--loading" : ""
+                    }`}
+                    disabled={isSubmitting || !eventTitle.trim()}
+                  >
+                    {isSubmitting ? "Adding..." : "Add Event"}
+                  </button>
+                </div>
+              </form>
+              <ul className="calendar__event-list" aria-live="polite">
+                {selectedEvents.length === 0 ? (
+                  <li className="calendar__event-empty">No events yet.</li>
+                ) : (
+                  selectedEvents.map((item) => (
+                    <li key={item.id} className="calendar__event-item">
+                      {item.title}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </>
+          ) : (
+            <p className="calendar__event-empty">
+              Choose a date to add events.
+            </p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
